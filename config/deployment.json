@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EZOSD Deployment Configuration",
+  "version": "0.1.0",
+  
+  "WindowsVersion": "11",
+  "Edition": "Enterprise",
+  "Architecture": "x64",
+  "WindowsRelease": "24h2",
+  
+  "TargetDisk": "auto",
+  "PartitionScheme": "UEFI",
+  
+  "ESDPath": "",
+  "ESDDownloadURL": "",
+  "DownloadPath": "C:\\EZOSD\\Downloads",
+
+  "UpdateSettings": {
+    "EnableWindowsUpdates": true,
+    "IncludeDriverUpdates": false,
+    "IncludeOptionalUpdates": false
+  },
+  
+  "DriverSources": [
+    {
+      "Name": "Autodetect",
+      "Type": "Autodetect",
+      "Enabled": true,
+      "Description": "Automatically detect system model and download appropriate drivers"
+    }
+  ],
+  
+  "PostInstallScript": "https://github.com/mattskare/EZOSD/releases/latest/download/SetupComplete.ps1",
+  
+  "Advanced": {
+    "CacheESD": true,
+    "VerifyImageIntegrity": true,
+    "OptimizeImage": true,
+    "InjectNetworkDriversFirst": true
+  },
+  
+  "_comments": {
+    "WindowsVersion": "10 or 11",
+    "Edition": "Home, Pro, Enterprise, Education, etc.",
+    "Architecture": "x64, x86, or arm64",
+    "TargetDisk": "Disk number or 'auto' for automatic selection",
+    "PartitionScheme": "UEFI (GPT) or BIOS (MBR)",
+    "ESDPath": "Local path to Windows ESD/WIM file (takes precedence over download)",
+    "ESDDownloadURL": "Direct download URL for Windows ESD (if not using local path)",
+    "DriverSources": "Array of driver sources to download and inject during deployment",
+    "PostInstallScript": "URL of the script to execute after Windows installation",
+    "UpdateSettings": "Settings related to Windows updates",
+    "Note": "Remove or disable example driver sources before deployment"
+  }
+}

@@ -1,0 +1,107 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number for the release (e.g. 1.X.X)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Read version
+        id: version
+        shell: pwsh
+        run: |
+          # Use workflow input version if provided, otherwise read from VERSION file
+          $inputVersion = "${{ github.event.inputs.version }}"
+          if ($inputVersion) {
+            $version = $inputVersion
+          } else {
+            $version = (Get-Content VERSION -Raw).Trim()
+          }
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "Version: $version"
+      
+      - name: Run Build script
+        shell: pwsh
+        run: |
+          cd build
+          .\Build-Standalone.ps1 -OutputPath "..\EZOSD.ps1"
+      
+      - name: Verify output
+        shell: pwsh
+        run: |
+          if (Test-Path "EZOSD.ps1") {
+            $size = [math]::Round((Get-Item "EZOSD.ps1").Length / 1KB, 1)
+            Write-Host "✓ Standalone script created successfully ($size KB)"
+          } else {
+            Write-Error "Build failed - output file not found"
+            exit 1
+          }
+      
+      - name: Create Release
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          
+          # Determine tag - use ref_name for tag pushes, construct for workflow_dispatch
+          if ("${{ github.event_name }}" -eq "push") {
+            $tag = "${{ github.ref_name }}"
+          } else {
+            $tag = "v$version"
+          }
+          
+          # workflow_dispatch creates pre-releases, tag pushes create normal releases
+          $isPrerelease = "${{ github.event_name == 'workflow_dispatch' }}"
+          
+          $body = @"
+          # EZOSD - Enterprise Zero-Touch Operating System Deployment
+          
+          ## Version $version
+          
+          ### What's Included
+          
+          - **EZOSD.ps1**: Complete standalone deployment script with all modules embedded
+          - **SetupComplete.ps1**: Post-deployment configuration script
+          
+          ### Usage
+          
+          1. Download ``EZOSD.ps1``
+          2. Boot into WinPE environment
+          3. Run the script:
+             ``````powershell
+             .\EZOSD.ps1
+             ``````
+          
+          ### Requirements
+          
+          - WinPE environment
+          - PowerShell 5.1+
+          - DISM module
+          - Internet connection for downloading Windows ESD and drivers
+          
+          For detailed documentation, see the [README](https://github.com/${{ github.repository }}/blob/main/README.md).
+          "@
+          
+          $flags = @("--title", "Release $tag", "--notes", $body)
+          if ($isPrerelease -eq "true") {
+            $flags += "--prerelease"
+          }
+          
+          gh release create $tag EZOSD.ps1 build/SetupComplete.ps1 @flags

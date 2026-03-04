@@ -1,0 +1,56 @@
+# Windows image files and downloads
+*.wim
+*.esd
+*.iso
+*.swm
+
+# Driver packages
+drivers/*.cab
+drivers/*.exe
+drivers/*.zip
+!drivers/.gitkeep
+
+# Build outputs
+build/output/
+build/temp/
+build/WinPE/
+
+# Logs
+*.log
+logs/
+X:/Windows/Logs/
+
+# Configuration overrides (keep templates)
+config/*-override.json
+config/local-*.json
+
+# Secrets and credentials
+*.key
+*.pfx
+*.cer
+secrets/
+
+# PowerShell
+*.ps1~
+*.psm1~
+
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Temporary files
+*.tmp
+*.temp
+~$*
+
+# IDE and Editor
+.vscode/
+.vs/
+.idea/
+*.sublime-*
+
+# Cache
+cache/
+.cache/
