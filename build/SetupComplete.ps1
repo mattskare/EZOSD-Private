@@ -164,7 +164,6 @@ catch {
 try {
     Write-Host "Fixing TimeZone service statup type to MANUAL."
     Set-Services -ServiceName $ServiceName -Action $Action
-    Exit 0
 }
 catch {
     Write-Error $_.Exception.Message
