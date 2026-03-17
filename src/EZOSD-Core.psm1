@@ -39,13 +39,6 @@ function Initialize-EZOSD {
             Write-EZOSDLog -Message "EZOSD USB Version: $env:EZOSD_USBVer" -Level Info
         }
         
-        # Load version
-        $versionFile = Join-Path $PSScriptRoot "..\VERSION"
-        if (Test-Path $versionFile) {
-            $Script:EZOSDVersion = (Get-Content $versionFile -Raw).Trim()
-            Write-EZOSDLog -Message "EZOSD Version: $Script:EZOSDVersion" -Level Info
-        }
-        
         # Validate WinPE environment
         Write-EZOSDLog -Message "Validating WinPE environment..." -Level Info
         if (-not (Test-WinPEEnvironment)) {
