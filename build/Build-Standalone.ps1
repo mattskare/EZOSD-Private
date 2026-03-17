@@ -205,15 +205,19 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
 # since we already have them at the top
 $deployLogic = -join ($lines[$scriptStartIndex..($lines.Count - 1)] | ForEach-Object { "$_`n" })
 
+# Read the version from the version file and inject it into the main script
+$version = (Get-Content .\VERSION -Raw).Trim()
+
 if ($IncludeDebugInfo) {
     $combinedScript += @"
 
 #region Main Deployment Logic
 # Source: Deploy-Windows.ps1
+`$version = "$version"
 
 "@
 } else {
-    $combinedScript += "`n#region Main Deployment Logic`n"
+    $combinedScript += "`n#region Main Deployment Logic`n`$version = $version`n"
 }
 
 $combinedScript += $deployLogic.TrimEnd()

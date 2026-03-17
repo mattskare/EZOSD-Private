@@ -41,9 +41,6 @@ param(
 # Set error action preference
 $ErrorActionPreference = "Stop"
 
-# Read version from file
-$version = (Get-Content .\VERSION -Raw).Trim()
-
 # Import modules
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $modulePath = Join-Path $scriptRoot "src"
