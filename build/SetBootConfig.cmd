@@ -4,9 +4,6 @@ REM Get the GUID of the default boot entry and copy it to create a new entry for
 bcdedit /store %USBDRIVE%\EFI\Microsoft\Boot\BCD /enum | find "osdevice" > GUID.txt
 For /F "tokens=2 delims={}" %%i in (GUID.txt) do (set _NEWGUID=%%i)
 
-REM Rename the original entry to "Windows Setup (x64)"
-bcdedit /store %USBDRIVE%\EFI\Microsoft\Boot\BCD /set {%_NEWGUID%} description "Windows Setup (x64)"
-
 bcdedit /store %USBDRIVE%\EFI\Microsoft\Boot\BCD /copy {default} /d "Windows Setup (arm64)" > GUID2.txt
 For /F "tokens=2 delims={}" %%i in (GUID2.txt) do (set _NEWGUID2=%%i)
 
