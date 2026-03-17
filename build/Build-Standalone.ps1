@@ -36,7 +36,7 @@ $versionFile = Join-Path $repoRoot "VERSION"
 $outputFile = Join-Path $scriptRoot $OutputPath
 
 Write-Host "╔═══════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║         EZOSD Standalone Build Script                        ║" -ForegroundColor Cyan
+Write-Host "║         EZOSD Standalone Build Script                         ║" -ForegroundColor Cyan
 Write-Host "╚═══════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
 
@@ -93,8 +93,6 @@ $combinedScript = @"
     Orchestrates the complete Windows deployment workflow from WinPE.
     Downloads Windows ESD, partitions disk, applies image, injects drivers,
     and configures post-installation automation.
-.PARAMETER ConfigPath
-    Path to deployment configuration file.
 .PARAMETER LogLevel
     Logging level (Debug, Info, Warning, Error).
 .PARAMETER Interactive
@@ -106,9 +104,6 @@ $combinedScript = @"
 .EXAMPLE
     .\Deploy-Windows-Standalone.ps1
     Run with default settings and configuration.
-.EXAMPLE
-    .\Deploy-Windows-Standalone.ps1 -ConfigPath "C:\CustomConfig\deployment.json" -LogLevel Debug
-    Run with custom configuration and debug logging.
 .NOTES
     Version: $version
     Build Date: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
@@ -120,9 +115,6 @@ $($moduleOrder | ForEach-Object { "    - $_" })
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = `$false)]
-    [string]`$ConfigPath = "config\deployment.json",
-    
     [Parameter(Mandatory = `$false)]
     [ValidateSet("Debug", "Info", "Warning", "Error")]
     [string]`$LogLevel = "Info",

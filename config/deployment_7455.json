@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "EZOSD Deployment Configuration",
-  "version": "0.1.0",
+  "version": "0.2.0",
   
   "WindowsVersion": "11",
   "Edition": "Enterprise",
@@ -32,15 +32,8 @@
   ],
   
   "PostInstallScripts": [
-    "X:\\EZOSD\\postInstallScripts\\TempSetupComplete.ps1"
+    "X:\\EZOSD\\postInstallScripts\\CustomSetupComplete.ps1"
   ],
-  
-  "Advanced": {
-    "CacheESD": true,
-    "VerifyImageIntegrity": true,
-    "OptimizeImage": true,
-    "InjectNetworkDriversFirst": true
-  },
   
   "_comments": {
     "WindowsVersion": "10 or 11",

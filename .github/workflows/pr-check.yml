@@ -1,0 +1,186 @@
+name: PR Check
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  version-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check version
+        id: check
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $prVersion = (Get-Content VERSION -Raw).Trim()
+          git fetch origin main
+          $mainVersion = git show origin/main:VERSION 2>$null
+          if ($null -eq $mainVersion) {
+            $mainVersion = "0.0.0"
+          }
+          $mainVersion = $mainVersion.Trim()
+
+          echo "pr_version=$prVersion" >> $env:GITHUB_OUTPUT
+          echo "main_version=$mainVersion" >> $env:GITHUB_OUTPUT
+
+          Write-Host "PR VERSION:   $prVersion"
+          Write-Host "Main VERSION: $mainVersion"
+
+          # Validate semver format — hard failure
+          if ($prVersion -notmatch '^\d+\.\d+\.\d+$') {
+            echo "result=invalid_format" >> $env:GITHUB_OUTPUT
+            Write-Error "VERSION file has invalid format '$prVersion'. Expected semantic versioning (e.g. 1.0.0)."
+            exit 1
+          }
+
+          # Compare versions
+          $prParts = $prVersion.Split('.') | ForEach-Object { [int]$_ }
+          $mainParts = $mainVersion.Split('.') | ForEach-Object { [int]$_ }
+          $isIncrement = $false
+          for ($i = 0; $i -lt 3; $i++) {
+            if ($prParts[$i] -gt $mainParts[$i]) {
+              $isIncrement = $true
+              break
+            } elseif ($prParts[$i] -lt $mainParts[$i]) {
+              break
+            }
+          }
+
+          if ($isIncrement) {
+            echo "result=will_release" >> $env:GITHUB_OUTPUT
+            Write-Host "Version incremented: $mainVersion -> $prVersion. A release will be created on merge."
+          } else {
+            echo "result=no_release" >> $env:GITHUB_OUTPUT
+            Write-Host "Version not incremented ($prVersion). No release will be created on merge."
+          }
+
+      - name: Check version consistency
+        id: consistency
+        if: steps.check.outputs.result == 'will_release'
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          $searchString = "\*\*Version\*\*:\s*$version|Version:? ?$version"
+          $filesToCheck = @("Deploy-Windows.ps1", "build/Create-BootableUSB.ps1", "docs/ARCHITECTURE.md")
+          $missingFiles = @()
+          foreach ($file in $filesToCheck) {
+            if (Select-String -Path $file -Pattern $searchString) {
+              Write-Host "✓ Version string found in $file"
+            } else {
+              Write-Host "✗ Version string NOT found in $file"
+              $missingFiles += $file
+            }
+          }
+          $missing = $missingFiles -join ','
+          echo "missing_files=$missing" >> $env:GITHUB_OUTPUT
+          if ($missingFiles.Count -gt 0) {
+            Write-Error "Version string not found in: $($missingFiles -join ', ')"
+            exit 1
+          }
+
+      - name: Check tag existence
+        id: tag_check
+        if: steps.check.outputs.result == 'will_release'
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $tag = "v${{ steps.check.outputs.pr_version }}"
+          $existingTag = git tag --list $tag
+          if ($existingTag) {
+            Write-Error "Tag $tag already exists. Please increment the version to create a new release."
+            exit 1
+          } else {
+            Write-Host "Tag $tag does not exist. Ready to create release on merge."
+          }
+
+      - name: Update PR comment
+        if: always() && steps.check.outcome != 'cancelled'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- ezosd-version-check -->';
+            const result = '${{ steps.check.outputs.result }}';
+            const prVersion = '${{ steps.check.outputs.pr_version }}';
+            const mainVersion = '${{ steps.check.outputs.main_version }}';
+            const checkFailed = '${{ steps.check.outcome }}' === 'failure';
+            const consistencyFailed = '${{ steps.consistency.outcome }}' === 'failure';
+            const missingFiles = '${{ steps.consistency.outputs.missing_files }}';
+
+            let body = marker + '\n\n';
+
+            if (checkFailed && result === 'invalid_format') {
+              body += `### ❌ Version Check Failed\n\n`;
+              body += `The \`VERSION\` file contains an invalid format (\`${prVersion}\`). Please use semantic versioning (e.g. \`1.0.0\`).`;
+            } else if (result === 'will_release' && consistencyFailed && missingFiles) {
+              const files = missingFiles.split(',').map(f => `\`${f}\``).join(', ');
+              body += `### ⚠️ Release Blocked\n\n`;
+              body += `Version incremented to \`${prVersion}\` (from \`${mainVersion}\`), but the version string was not found in: ${files}.\n\n`;
+              body += `Please update these files to match the \`VERSION\` file.`;
+            } else if (result === 'will_release') {
+              body += `### 🚀 Release Pending\n\n`;
+              body += `Merging this PR will create pre-release **v${prVersion}** (current: \`${mainVersion}\`).`;
+            } else {
+              body += `### ℹ️ No Release\n\n`;
+              body += `\`VERSION\` file (\`${prVersion}\`) has not been incremented from \`main\` (\`${mainVersion}\`). No release will be created on merge.`;
+            }
+
+            // Find existing bot comment with our marker
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body,
+              });
+            }
+
+      - name: Fail if checks failed
+        if: steps.check.outcome == 'failure' || steps.consistency.outcome == 'failure'
+        shell: pwsh
+        run: |
+          Write-Error "Version checks failed. See PR comment for details."
+          exit 1
+
+      - name: Build verification
+        shell: pwsh
+        run: |
+          cd build
+          .\Build-Standalone.ps1 -OutputPath "..\EZOSD.ps1"
+
+      - name: Verify output
+        shell: pwsh
+        run: |
+          if (Test-Path "EZOSD.ps1") {
+            $size = [math]::Round((Get-Item "EZOSD.ps1").Length / 1KB, 1)
+            Write-Host "✓ Standalone script created successfully ($size KB)"
+          } else {
+            Write-Error "Build failed - output file not found"
+            exit 1
+          }

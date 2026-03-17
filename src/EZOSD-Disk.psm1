@@ -101,8 +101,8 @@ function Select-EZOSDTargetDisk {
             }
             
             do {
-                $input = Read-Host "`nSelect disk number"
-                $selectedDisk = $availableDisks | Where-Object { $_.Number -eq [int]$input }
+                $diskSelection = Read-Host "`nSelect disk number"
+                $selectedDisk = $availableDisks | Where-Object { $_.Number -eq [int]$diskSelection }
             } while (-not $selectedDisk)
             
             Write-EZOSDLog -Message "User selected disk $($selectedDisk.Number)" -Level Info

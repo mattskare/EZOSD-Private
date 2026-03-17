@@ -11,6 +11,12 @@ $Script:LogPath = $null
 $Script:LogLevel = "Info"
 $Script:LogToConsole = $true
 $Script:LogToFile = $true
+$Script:LogLevels = @{
+    "Debug" = 0
+    "Info" = 1
+    "Warning" = 2
+    "Error" = 3
+}
 
 <#
 .SYNOPSIS
@@ -87,14 +93,7 @@ function Write-EZOSDLog {
     )
     
     # Check if message should be logged based on level
-    $levels = @{
-        "Debug" = 0
-        "Info" = 1
-        "Warning" = 2
-        "Error" = 3
-    }
-    
-    if ($levels[$Level] -lt $levels[$Script:LogLevel]) {
+    if ($Script:LogLevels[$Level] -lt $Script:LogLevels[$Script:LogLevel]) {
         return
     }
     

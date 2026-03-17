@@ -6,8 +6,6 @@
     Orchestrates the complete Windows deployment workflow from WinPE.
     Downloads Windows ESD, partitions disk, applies image, injects drivers,
     and configures post-installation automation.
-.PARAMETER ConfigPath
-    Path to deployment configuration file.
 .PARAMETER LogLevel
     Logging level (Debug, Info, Warning, Error).
 .PARAMETER Interactive
@@ -19,19 +17,13 @@
 .EXAMPLE
     .\Deploy-Windows.ps1
     Run with default settings and configuration.
-.EXAMPLE
-    .\Deploy-Windows.ps1 -ConfigPath "C:\CustomConfig\deployment.json" -LogLevel Debug
-    Run with custom configuration and debug logging.
 .NOTES
-    Version: 0.1.0-alpha
+    Version: 0.2.0
     Requires: WinPE environment, PowerShell 5.1+, DISM module
 #>
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $false)]
-    [string]$ConfigPath = "config\deployment.json",
-    
     [Parameter(Mandatory = $false)]
     [ValidateSet("Debug", "Info", "Warning", "Error")]
     [string]$LogLevel = "Info",
@@ -48,6 +40,9 @@ param(
 
 # Set error action preference
 $ErrorActionPreference = "Stop"
+
+# Read version from file
+$version = (Get-Content .\VERSION -Raw).Trim()
 
 # Import modules
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -81,23 +76,28 @@ function Start-Deployment {
         Write-Host ""
         Write-Host "╔═══════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
         Write-Host "║         EZOSD - Enterprise Windows Deployment Tool            ║" -ForegroundColor Cyan
-        Write-Host "║                    Version 0.1.0-alpha                        ║" -ForegroundColor Cyan
+        Write-Host "║                    Version $version                              ║" -ForegroundColor Cyan
         Write-Host "╚═══════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
         Write-Host ""
         
         # Initialize EZOSD
         Write-Host "Initializing EZOSD..." -ForegroundColor Yellow
-        $initResult = Initialize-EZOSD -ConfigPath $ConfigPath -LogLevel $LogLevel
+        $initResult = Initialize-EZOSD -LogLevel $LogLevel
         
         if (-not $initResult) {
             Write-EZOSDLog -Message "EZOSD initialization failed" -Level Warning
         }
         
-        # Get configuration
-        $config = Get-CurrentConfiguration
-
-        # Set configuration to cloud json
-        $config = Invoke-RestMethod -Uri "https://raw.githubusercontent.com/mattskare/EZOSD/refs/heads/main/config/deployment.json"
+        # Get configuration from cloud
+        $config = Invoke-RestMethod -Uri "https://github.com/mattskare/EZOSD/releases/latest/download/config/deployment.json"
+        
+        # Validate required configuration fields
+        $requiredFields = @('WindowsVersion', 'Edition', 'TargetDisk', 'PartitionScheme')
+        foreach ($field in $requiredFields) {
+            if (-not $config.PSObject.Properties[$field]) {
+                throw "Remote configuration is missing required field: $field"
+            }
+        }
         
         # Display configuration summary
         Write-Host "`nDeployment Configuration:" -ForegroundColor Cyan
@@ -116,7 +116,7 @@ function Start-Deployment {
         }
         
         # Step 1: Select target disk
-        Write-Host "`n[Step 1/6] Disk Selection" -ForegroundColor Yellow
+        Write-Host "`n[Step 1/7] Disk Selection" -ForegroundColor Yellow
         
         $targetDisk = Select-EZOSDTargetDisk -DiskNumber $config.TargetDisk -Interactive:$Interactive
         
@@ -133,7 +133,10 @@ function Start-Deployment {
             }
         }
         
-        Write-Host "`n[Step 2/6] Disk Partitioning" -ForegroundColor Yellow
+        Write-Host "`n[Step 2/7] Disk Partitioning" -ForegroundColor Yellow
+
+        Write-Host "EZOSD will partition the disk in 5 seconds... Press Ctrl+C to cancel." -ForegroundColor Yellow
+        Start-Sleep -Seconds 5
         
         $partitions = Initialize-EZOSDDisk -Disk $targetDisk -PartitionScheme $config.PartitionScheme
         
@@ -145,7 +148,7 @@ function Start-Deployment {
         Write-Host "    Windows: ${windowsDrive}:" -ForegroundColor White
         
         # Step 3: Download or locate Windows ESD
-        Write-Host "`n[Step 3/6] Windows ESD Acquisition" -ForegroundColor Yellow
+        Write-Host "`n[Step 3/7] Windows ESD Acquisition" -ForegroundColor Yellow
         
         $esdPath = $null
         if ($config.ESDPath -and (Test-Path $config.ESDPath)) {
@@ -181,7 +184,7 @@ function Start-Deployment {
         Write-Host "  ✓ ESD located: $esdPath" -ForegroundColor Green
         
         # Step 4: Select and apply Windows image
-        Write-Host "`n[Step 4/6] Windows Image Deployment" -ForegroundColor Yellow
+        Write-Host "`n[Step 4/7] Windows Image Deployment" -ForegroundColor Yellow
         
         $imageIndex = Select-WindowsEdition -ImagePath $esdPath -EditionName $config.Edition -Interactive:$Interactive
         
@@ -195,7 +198,7 @@ function Start-Deployment {
         
         # Step 5: Install drivers
         if (-not $SkipDrivers -and $config.DriverSources) {
-            Write-Host "`n[Step 5/6] Driver Installation" -ForegroundColor Yellow
+            Write-Host "`n[Step 5/7] Driver Installation" -ForegroundColor Yellow
             
             $driversInstalled = Install-ConfiguredDrivers -DriverConfig $config.DriverSources -TargetDrive $windowsDrive
             
@@ -207,12 +210,12 @@ function Start-Deployment {
             }
         }
         else {
-            Write-Host "`n[Step 5/6] Driver Installation - SKIPPED" -ForegroundColor Gray
+            Write-Host "`n[Step 5/7] Driver Installation - SKIPPED" -ForegroundColor Gray
         }
         
         # Step 6: Configure post-installation
         if (-not $SkipPostInstall) {
-            Write-Host "`n[Step 6/6] Post-Installation Configuration" -ForegroundColor Yellow
+            Write-Host "`n[Step 6/7] Post-Installation Configuration" -ForegroundColor Yellow
             
             $postInstallConfigured = Set-PostInstallConfiguration -TargetDrive $windowsDrive -Configuration $config
             
@@ -224,7 +227,17 @@ function Start-Deployment {
             }
         }
         else {
-            Write-Host "`n[Step 6/6] Post-Installation Configuration - SKIPPED" -ForegroundColor Gray
+            Write-Host "`n[Step 6/7] Post-Installation Configuration - SKIPPED" -ForegroundColor Gray
+        }
+
+        # Step 7: Cleanup and remove temporary files
+        Write-Host "`n[Step 7/7] Finalizing Deployment" -ForegroundColor Yellow
+        $cleanupResult = Remove-DeploymentFiles -TargetDrive $windowsDrive -Files @($esdPath, "$($windowsDrive):\EZOSD\Downloads\Drivers", "$($windowsDrive):\EZOSD\Temp")
+        if ($cleanupResult) {
+            Write-Host "  ✓ Temporary files cleaned up" -ForegroundColor Green
+        }
+        else {
+            Write-Host "  ⚠ Cleanup completed with warnings" -ForegroundColor Yellow
         }
         
         # Configure boot
@@ -251,23 +264,6 @@ function Start-Deployment {
             }
         }
 
-        #region Temp
-        # Temporarily copy module files to Windows partition for post-install script access
-        # $postInstallModulePath = Join-Path ${windowsDrive}":" "EZOSD\Modules"
-        # try {
-        #     if (-not (Test-Path $postInstallModulePath)) {
-        #         New-Item -Path $postInstallModulePath -ItemType Directory -ErrorAction Stop | Out-Null
-        #     }
-        #     Get-ChildItem -Path $modulePath\*.psm1 -ErrorAction Stop | ForEach-Object {
-        #         Copy-Item -Path $_.FullName -Destination $postInstallModulePath -ErrorAction Stop
-        #     }
-        #     Write-Host "  ✓ Module files copied to Windows partition for post-install script access" -ForegroundColor Green
-        # }
-        # catch {
-        #     Write-Warning "Failed to copy module files to Windows partition: $_"
-        # }
-        #endregion Temp
-        
         Write-Host ""
         Write-Host "╔═══════════════════════════════════════════════════════════════╗" -ForegroundColor Green
         Write-Host "║              DEPLOYMENT COMPLETED SUCCESSFULLY                ║" -ForegroundColor Green

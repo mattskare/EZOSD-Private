@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     EZOSD Bootable USB Creation Script
 .DESCRIPTION
@@ -12,26 +12,11 @@
     WinPE architecture (amd64, x86, or arm64).
 .PARAMETER IncludeOptionalPackages
     Include additional WinPE packages (PowerShell, DISM, NetFX, etc.).
-.PARAMETER AutoStart
-    Automatically start deployment on boot without user interaction.
-.PARAMETER KeepBuildFiles
-    Keep the WinPE working directory after build for faster rebuilds.
-.PARAMETER RebuildOnly
-    Skip WinPE creation and only update EZOSD files on USB (requires existing build files).
 .EXAMPLE
     .\Create-BootableUSB.ps1 -USBDrive E:
     Create bootable USB on drive E: with default settings.
-.EXAMPLE
-    .\Create-BootableUSB.ps1 -USBDrive F: -AutoStart -Verbose
-    Create auto-starting bootable USB with verbose output.
-.EXAMPLE
-    .\Create-BootableUSB.ps1 -USBDrive E: -KeepBuildFiles
-    Create USB and keep build files for faster subsequent rebuilds.
-.EXAMPLE
-    .\Create-BootableUSB.ps1 -USBDrive E: -RebuildOnly
-    Quickly rebuild USB using existing WinPE files (after modifying EZOSD source).
 .NOTES
-    Version: 0.1.0-alpha
+    Version: 0.2.0
     Requires: Administrator privileges, Windows ADK
 #>
 
@@ -44,25 +29,23 @@ param(
     
     [Parameter(Mandatory = $false)]
     [switch]$IncludeOptionalPackages,
-    
-    [Parameter(Mandatory = $false)]
-    [switch]$AutoStart,
-    
-    [Parameter(Mandatory = $false)]
-    [switch]$KeepBuildFiles,
-    
-    [Parameter(Mandatory = $false)]
-    [switch]$RebuildOnly,
 
     [Parameter(Mandatory = $false)]
     [string]$Directory = 'C:\EZOSD',
 
-    [Parameter(Mandatory = $true)]
-    [ValidatePattern('^[A-Z]:$')]
-    [string]$USBDrive
+    # Prefer DiskNumber (passed by GUI). USBDrive (drive letter) kept for backwards-compatible CLI use.
+    [Parameter(Mandatory = $false)]
+    [int]$DiskNumber = -1,
+
+    [Parameter(Mandatory = $false)]
+    [ValidatePattern('^[A-Z]:$|^$')]
+    [string]$USBDrive = ''
 )
 
 $ErrorActionPreference = "Stop"
+
+# Read version from file
+$version = (Get-Content -Path (Join-Path "$PSScriptRoot\.." "VERSION") -Raw).Trim()
 
 # Script variables
 $script:WorkingDirectory = Join-Path $Directory "EZOSD_USB_Build"
@@ -116,7 +99,8 @@ function Get-ADKPath {
         }
     }
     
-    throw "Windows ADK not found. Please install Windows ADK from: https://learn.microsoft.com/windows-hardware/get-started/adk-install"
+    Write-Log "Windows ADK not found. Please install Windows ADK from: https://learn.microsoft.com/windows-hardware/get-started/adk-install" -Level Warning
+    return $null
 }
 
 <#
@@ -281,11 +265,30 @@ function Dismount-WinPEImage {
     Creates bootable USB drive.
 #>
 function New-BootableUSB {
-    param([string]$Drive)
+    param(
+        [int]$TargetDiskNumber = -1,
+        [string]$Drive = ''
+    )
     
     Write-Log "Formatting USB drive..."
-    
-    $diskNumber = (Get-Partition | Where-Object { $_.DriveLetter -eq $Drive.TrimEnd(':') }).DiskNumber
+
+    # Resolve disk number — prefer explicit number, fall back to looking up from drive letter
+    $diskNumber = $TargetDiskNumber
+    if ($diskNumber -lt 0) {
+        if (-not $Drive) {
+            throw "Either DiskNumber or USBDrive (drive letter) must be supplied."
+        }
+        $diskNumber = (Get-Partition | Where-Object { $_.DriveLetter -eq $Drive.TrimEnd(':') }).DiskNumber
+        if ($null -eq $diskNumber) {
+            throw "Could not find disk number for drive letter '$Drive'."
+        }
+    }
+
+    # Safety check: do not allow formatting the system/boot disk
+    $sysDisk = Get-Disk | Where-Object { $_.IsBoot -or $_.IsSystem }
+    if ($sysDisk.Number -contains $diskNumber) {
+        throw "Disk $diskNumber is a system/boot disk and cannot be formatted."
+    }
     
     # Clean and initialize disk
     Clear-Disk -Number $diskNumber -RemoveData -RemoveOEM -Confirm:$false -ErrorAction Stop
@@ -308,7 +311,7 @@ function New-BootableUSB {
     
     # Format as FAT32
     Write-Verbose "Formatting partition as FAT32..."
-    Format-Volume -Partition $partition -FileSystem FAT32 -NewFileSystemLabel "EZOSD" -Confirm:$false | Out-Null
+    Format-Volume -Partition $partition -FileSystem FAT32 -NewFileSystemLabel "EZOSD v$version" -Confirm:$false | Out-Null
     
     # Assign drive letter
     $partition | Add-PartitionAccessPath -AssignDriveLetter
@@ -353,20 +356,88 @@ function Update-BootConfiguration {
 
     Write-Log "Updating boot configuration for multi-architecture support..."
     
-    # Set path to BCD store in the combined WinPE directory
-    $bcdPath = Join-Path $script:WorkingDirectory "WinPE_Combined\EFI\Microsoft\Boot\BCD"
     # Set environment variable for bcdedit to use the BCD store in the combined directory
-    $env:CombinedBCDStore = $bcdPath
     $env:USBDrive = $USBDrive
 
     $cmdLine = "/c .\build\SetBootConfig.cmd"
     Write-Verbose "Running: cmd.exe $cmdLine"
 
     $process = Start-Process -FilePath "cmd.exe" -ArgumentList $cmdLine -Wait -PassThru -NoNewWindow
+    if ($process.ExitCode -ne 0) {
+        throw "Failed to update boot configuration (Exit code: $($process.ExitCode))"
+    }
 
     # Clean up
     Remove-Item GUID.txt -ErrorAction SilentlyContinue
     Remove-Item GUID2.txt -ErrorAction SilentlyContinue
+}
+
+<#
+.SYNOPSIS
+    Downloads and installs Windows ADK and WinPE addon.
+.DESCRIPTION
+    If Windows ADK is not detected, this function will download and install the latest version of
+    Windows ADK and the WinPE addon. This is required for creating the WinPE environment used in the bootable USB.
+.PARAMETER DownloadPath
+    Path to download the ADK installers. Defaults to a subdirectory in the working directory.
+.EXAMPLE
+    Install-WindowsADK
+    Downloads and installs Windows ADK to the default location.
+#>
+function Install-WindowsADK {
+    param(
+        [string]$DownloadPath = (Join-Path $script:WorkingDirectory "ADKSetup")
+    )
+
+    Write-Log "Preparing to download Windows ADK..."
+
+    $adkInstallerUrl = "https://go.microsoft.com/fwlink/?linkid=2289980" # ADK 10.1.26100.2454
+    $adkPEAddonUrl   = "https://go.microsoft.com/fwlink/?linkid=2289981" # WinPE addon 10.1.26100.2454
+
+    $adkInstallerPath  = Join-Path $DownloadPath "adksetup.exe"
+    $adkPEAddonPath    = Join-Path $DownloadPath "adkwinpesetup.exe"
+
+    if (-not (Test-Path $DownloadPath)) {
+        New-Item -Path $DownloadPath -ItemType Directory -Force | Out-Null
+    }
+
+    # Download ADK installer
+    Write-Log "Downloading Windows ADK installer..."
+    try {
+        Invoke-WebRequest -Uri $adkInstallerUrl -OutFile $adkInstallerPath -UseBasicParsing
+        Write-Log "Windows ADK installer downloaded" -Level Success
+    }
+    catch {
+        throw "Failed to download Windows ADK installer: $_"
+    }
+
+    # Download WinPE addon installer
+    Write-Log "Downloading Windows ADK WinPE addon installer..."
+    try {
+        Invoke-WebRequest -Uri $adkPEAddonUrl -OutFile $adkPEAddonPath -UseBasicParsing
+        Write-Log "Windows ADK WinPE addon installer downloaded" -Level Success
+    }
+    catch {
+        throw "Failed to download Windows ADK WinPE addon installer: $_"
+    }
+
+    # Install ADK
+    Write-Log "Installing Windows ADK (this may take several minutes)..."
+    $adkArgs = "/quiet /norestart /features OptionId.DeploymentTools"
+    $process = Start-Process -FilePath $adkInstallerPath -ArgumentList $adkArgs -Wait -PassThru
+    if ($process.ExitCode -notin @(0, 3010)) {
+        throw "Windows ADK installation failed (Exit code: $($process.ExitCode))"
+    }
+    Write-Log "Windows ADK installed successfully" -Level Success
+
+    # Install WinPE addon
+    Write-Log "Installing Windows ADK WinPE addon (this may take several minutes)..."
+    $adkPEArgs = "/quiet /norestart /features OptionId.WindowsPreinstallationEnvironment"
+    $process = Start-Process -FilePath $adkPEAddonPath -ArgumentList $adkPEArgs -Wait -PassThru
+    if ($process.ExitCode -notin @(0, 3010)) {
+        throw "Windows ADK WinPE addon installation failed (Exit code: $($process.ExitCode))"
+    }
+    Write-Log "Windows ADK WinPE addon installed successfully" -Level Success
 }
 
 <#
@@ -378,28 +449,37 @@ function Start-Build {
         Write-Host ""
         Write-Host "╔═══════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
         Write-Host "║           EZOSD Bootable USB Creation Tool                    ║" -ForegroundColor Cyan
-        Write-Host "║                    Version 0.1.0-alpha                        ║" -ForegroundColor Cyan
+        Write-Host "║                    Version $version                              ║" -ForegroundColor Cyan
         Write-Host "╚═══════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
         Write-Host ""
         
         # Detect ADK
-        if (-not $ADKPath) {
+        if (-not $ADKPath) { # If ADK path not provided as parameter, attempt to detect it
             $ADKPath = Get-ADKPath
+            if (-not $ADKPath) { # If ADK still not found, attempt to download and install it
+                Write-Log "Windows ADK not found. Attempting to download and install..." -Level Warning
+                Install-WindowsADK
+                $ADKPath = Get-ADKPath
+                if (-not $ADKPath) {
+                    throw "Failed to detect Windows ADK after installation."
+                }
+            }
         }
         
         Write-Host ""
         Write-Host "Build Configuration:" -ForegroundColor Cyan
         Write-Host "  ADK Path: $ADKPath" -ForegroundColor White
-        Write-Host "  USB Drive: $USBDrive" -ForegroundColor White
-        Write-Host "  Auto-Start: $AutoStart" -ForegroundColor White
-        Write-Host "  Keep Build Files: $KeepBuildFiles" -ForegroundColor White
-        Write-Host "  Rebuild Only: $RebuildOnly" -ForegroundColor White
+        if ($DiskNumber -ge 0) {
+            Write-Host "  Target Disk: $DiskNumber" -ForegroundColor White
+        } else {
+            Write-Host "  USB Drive: $USBDrive" -ForegroundColor White
+        }
         Write-Host ""
 
         $architectures = @('amd64', 'arm64')
 
         # Create bootable USB
-        $finalUSBPath = New-BootableUSB -Drive $USBDrive
+        $finalUSBPath = New-BootableUSB -TargetDiskNumber $DiskNumber -Drive $USBDrive
 
         if (-not (Test-Path "$script:WorkingDirectory\WinPE_Combined")) {
             foreach ($architecture in $architectures) {
@@ -427,11 +507,10 @@ function Start-Build {
         Copy-Item -Path "$script:WorkingDirectory\WinPE_Combined\*" -Destination $finalUSBPath -Recurse -Force
 
         # Update boot configuration for multi-architecture support
-        Update-BootConfiguration -USBDrive $USBDrive
+        Update-BootConfiguration -USBDrive $finalUSBPath
         
         # Cleanup
         Write-Log "Cleaning up temporary files..."
-        #Remove-Item -Path $script:WorkingDirectory -Recurse -Force -ErrorAction SilentlyContinue
         
         # Success summary
         Write-Host ""
@@ -456,27 +535,6 @@ function Start-Build {
         Write-Host ""
         Write-Log "Error: $_" -Level Error
         Write-Host ""
-        
-        # Attempt cleanup
-        if (Test-Path $script:MountDirectory) {
-            Write-Log "Attempting to unmount WinPE image..." -Level Warning
-            try {
-                Dismount-WindowsImage -Path $script:MountDirectory -Discard -ErrorAction SilentlyContinue
-            }
-            catch {
-                Write-Log "Manual cleanup may be required: $script:MountDirectory" -Level Warning
-            }
-        }
-        
-        # if (Test-Path $script:WorkingDirectory) {
-        #     Write-Log "Cleaning up working directory..." -Level Warning
-        #     try {
-        #         Remove-Item -Path $script:WorkingDirectory -Recurse -Force -ErrorAction SilentlyContinue
-        #     }
-        #     catch {
-        #         Write-Log "Manual cleanup may be required: $script:WorkingDirectory" -Level Warning
-        #     }
-        # }
         
         return $false
     }

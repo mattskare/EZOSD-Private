@@ -2,14 +2,17 @@
 REM EZOSD Auto-Start Script
 
 wpeinit
-start cmd
-start powershell
+start /min cmd
+start /min powershell
 
 echo.
 echo ============================================================
 echo   EZOSD - Enterprise Windows Deployment
 echo ============================================================
 echo.
+
+REM Set EZOSD environment variable
+set EZOSD_USBVer=0.2.0
 
 REM Start the deployment script
 echo Starting automated deployment in 5 seconds...

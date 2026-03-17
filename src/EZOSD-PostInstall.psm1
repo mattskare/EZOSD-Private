@@ -97,59 +97,6 @@ exit /b 0
     }
 }
 
-function Copy-PostInstallScripts {
-    <#
-    .SYNOPSIS
-        Copies post-installation scripts to target Windows installation.
-    .PARAMETER TargetDrive
-        Drive letter where Windows is installed.
-    .PARAMETER ScriptSources
-        Array of script source paths to copy.
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$TargetDrive,
-        
-        [Parameter(Mandatory = $true)]
-        [array]$ScriptSources
-    )
-    
-    Write-EZOSDLog -Message "Copying post-installation scripts..." -Level Info
-    
-    try {
-        $targetScriptsPath = "${TargetDrive}:\Windows\Setup\Scripts"
-        
-        # Create target directory
-        if (-not (Test-Path $targetScriptsPath)) {
-            New-Item -Path $targetScriptsPath -ItemType Directory -Force | Out-Null
-        }
-        
-        $copiedScripts = @()
-        
-        foreach ($scriptSource in $ScriptSources) {
-            if (Test-Path $scriptSource) {
-                $scriptName = Split-Path $scriptSource -Leaf
-                $targetPath = Join-Path $targetScriptsPath $scriptName
-                
-                Copy-Item -Path $scriptSource -Destination $targetPath -Force
-                Write-EZOSDLog -Message "Copied: $scriptName" -Level Info
-                
-                $copiedScripts += "C:\Windows\Setup\Scripts\$scriptName"
-            }
-            else {
-                Write-EZOSDLog -Message "Script not found: $scriptSource" -Level Warning
-            }
-        }
-        
-        return $copiedScripts
-    }
-    catch {
-        Write-EZOSDError -Message "Failed to copy post-install scripts" -Exception $_.Exception
-        throw
-    }
-}
-
 function Add-PostInstallScriptFromGitHub {
     <#
     .SYNOPSIS
@@ -227,7 +174,6 @@ function Set-PostInstallConfiguration {
 # Export module members
 Export-ModuleMember -Function @(
     'New-SetupCompleteScript',
-    'Copy-PostInstallScripts',
     'Set-PostInstallConfiguration',
     'Add-PostInstallScriptFromGitHub'
 )

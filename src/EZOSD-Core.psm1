@@ -9,24 +9,18 @@
 using module .\EZOSD-Logger.psm1
 
 # Module variables
-$Script:Config = $null
 $Script:EZOSDVersion = $null
 $Script:DeploymentStartTime = $null
 
 <#
 .SYNOPSIS
     Initializes the EZOSD environment.
-.PARAMETER ConfigPath
-    Path to deployment configuration file.
 .PARAMETER LogLevel
     Logging level (Debug, Info, Warning, Error).
 #>
 function Initialize-EZOSD {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $false)]
-        [string]$ConfigPath = "config\deployment.json",
-        
         [Parameter(Mandatory = $false)]
         [ValidateSet("Debug", "Info", "Warning", "Error")]
         [string]$LogLevel = "Info"
@@ -39,6 +33,11 @@ function Initialize-EZOSD {
         Initialize-EZOSDLogger -Level $LogLevel
         
         Write-EZOSDLogSection -Title "EZOSD Initialization"
+
+        # Log USB version if set
+        if ($env:EZOSD_USBVer) {
+            Write-EZOSDLog -Message "EZOSD USB Version: $env:EZOSD_USBVer" -Level Info
+        }
         
         # Load version
         $versionFile = Join-Path $PSScriptRoot "..\VERSION"
@@ -53,63 +52,12 @@ function Initialize-EZOSD {
             throw "Not running in a valid WinPE environment"
         }
         
-        # Load configuration
-        Write-EZOSDLog -Message "Loading configuration from: $ConfigPath" -Level Info
-        $Script:Config = Get-EZOSDConfiguration -ConfigPath $ConfigPath
-        
         Write-EZOSDLog -Message "EZOSD initialized successfully" -Level Info
         return $true
     }
     catch {
         Write-EZOSDError -Message "Failed to initialize EZOSD" -Exception $_.Exception
         return $false
-    }
-}
-
-<#
-.SYNOPSIS
-    Loads and validates the deployment configuration.
-.PARAMETER ConfigPath
-    Path to configuration file.
-#>
-function Get-EZOSDConfiguration {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ConfigPath
-    )
-    
-    try {
-        # Resolve relative paths
-        if (-not [System.IO.Path]::IsPathRooted($ConfigPath)) {
-            $scriptRoot = Split-Path -Parent $PSScriptRoot
-            $ConfigPath = Join-Path $scriptRoot $ConfigPath
-        }
-        
-        if (-not (Test-Path $ConfigPath)) {
-            throw "Configuration file not found: $ConfigPath"
-        }
-        
-        $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
-        
-        # Validate required fields
-        $requiredFields = @('WindowsVersion', 'Edition', 'TargetDisk', 'PartitionScheme')
-        foreach ($field in $requiredFields) {
-            if (-not $config.PSObject.Properties[$field]) {
-                throw "Missing required configuration field: $field"
-            }
-        }
-        
-        Write-EZOSDLog -Message "Configuration loaded successfully" -Level Info
-        Write-EZOSDLog -Message "Windows Version: $($config.WindowsVersion)" -Level Info
-        Write-EZOSDLog -Message "Edition: $($config.Edition)" -Level Info
-        Write-EZOSDLog -Message "Partition Scheme: $($config.PartitionScheme)" -Level Info
-        
-        return $config
-    }
-    catch {
-        Write-EZOSDError -Message "Failed to load configuration" -Exception $_.Exception
-        throw
     }
 }
 
@@ -200,14 +148,6 @@ function Test-NetworkConnectivity {
 
 <#
 .SYNOPSIS
-    Gets the current deployment configuration.
-#>
-function Get-CurrentConfiguration {
-    return $Script:Config
-}
-
-<#
-.SYNOPSIS
     Gets deployment statistics.
 #>
 function Get-DeploymentStatistics {
@@ -230,9 +170,7 @@ function Get-DeploymentStatistics {
 # Export module members
 Export-ModuleMember -Function @(
     'Initialize-EZOSD',
-    'Get-EZOSDConfiguration',
     'Test-WinPEEnvironment',
     'Test-NetworkConnectivity',
-    'Get-CurrentConfiguration',
     'Get-DeploymentStatistics'
 )

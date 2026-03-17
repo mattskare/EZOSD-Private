@@ -208,8 +208,7 @@ function Save-WindowsUpdates {
 
 		$resultText = Convert-WuaResultCode -ResultCode $result.ResultCode
 		Write-EZOSDLog -Message "Download result: $resultText" -Level Info
-
-		Write-EZOSDLog -Message "Reboot required: $($result.RebootRequired)" -Level Info #Debug
+ #Debug
 
 		return ($result.ResultCode -eq 2)
 	}
@@ -223,8 +222,6 @@ function Install-WindowsUpdates {
 	<#
 	.SYNOPSIS
 		Installs the specified updates.
-	.PARAMETER Updates
-		Array of WUA update COM objects.
 	.PARAMETER Updates
 		Array of WUA update COM objects.
 	#>
@@ -357,6 +354,5 @@ Export-ModuleMember -Function @(
 	'Get-WindowsUpdates',
 	'Save-WindowsUpdates',
 	'Install-WindowsUpdates',
-	'Get-WindowsUpdateHistory',
-	'New-WuaUpdateCollection'
+	'Get-WindowsUpdateHistory'
 )

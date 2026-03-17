@@ -16,7 +16,7 @@ Location: `config\deployment.json` (or USB: `E:\EZOSD\config\deployment.json`)
 #### WindowsVersion
 - **Type**: String
 - **Required**: Yes
-- **Values**: `"10"`,  `"11"`
+- **Values**: `"11"`
 - **Description**: Windows version to deploy
 - **Example**:
   ```json
@@ -128,7 +128,7 @@ Location: `config\deployment.json` (or USB: `E:\EZOSD\config\deployment.json`)
 | Property | Type | Required | Description |
 |----------|------|----------|-------------|
 | `Name` | String | Yes | Friendly name for driver package |
-| `Type` | String | Yes | `"URL"` or `"Path"` |
+| `Type` | String | Yes | `"URL"`, `"Path"`, or `"Autodetect"` |
 | `URL` | String | Conditional | Download URL (required if Type=URL) |
 | `Path` | String | Conditional | Local/network path (required if Type=Path) |
 | `Enabled` | Boolean | No | Enable this driver source (default: true) |
@@ -156,54 +156,25 @@ Location: `config\deployment.json` (or USB: `E:\EZOSD\config\deployment.json`)
 }
 ```
 
-### Post-Installation Scripts
+### Post-Installation Script
 
-#### PostInstallScripts
-- **Type**: Array of Strings
+#### PostInstallScript
+- **Type**: String
 - **Required**: No
-- **Description**: Scripts to execute after Windows installation completes
-
-**Supported Script Types**:
-- PowerShell (`.ps1`)
-- Batch files (`.cmd`, `.bat`)
-- Executables (`.exe`)
+- **Description**: URL of a script to download and execute after Windows installation completes
 
 **Example**:
 ```json
 {
-  "PostInstallScripts": [
-    "E:\\EZOSD\\scripts\\ConfigureWindows.ps1",
-    "E:\\EZOSD\\scripts\\InstallApplications.cmd",
-    "E:\\EZOSD\\scripts\\JoinDomain.ps1"
-  ]
+  "PostInstallScript": "https://github.com/your-org/scripts/releases/latest/download/SetupComplete.ps1"
 }
 ```
 
-**Script Execution Order**: Scripts execute in array order during first logon.
+**Execution**: The script is downloaded and executed during the Windows first-boot Setup phase via SetupComplete.cmd.
 
 ### Advanced Settings
 
-#### Advanced Object
-
-```json
-{
-  "Advanced": {
-    "CacheESD": true,
-    "VerifyImageIntegrity": true,
-    "OptimizeImage": true,
-    "InjectNetworkDriversFirst": true
-  }
-}
-```
-
-**Properties**:
-
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `CacheESD` | Boolean | `true` | Cache downloaded ESD for reuse |
-| `VerifyImageIntegrity` | Boolean | `true` | Verify ESD file integrity with DISM |
-| `OptimizeImage` | Boolean | `true` | Run DISM cleanup after deployment |
-| `InjectNetworkDriversFirst` | Boolean | `true` | Prioritize network drivers for post-install connectivity |
+The `Advanced` configuration section has been removed. ESD caching and image verification are handled automatically.
 
 ## Configuration Examples
 
@@ -249,7 +220,7 @@ Location: `config\deployment.json` (or USB: `E:\EZOSD\config\deployment.json`)
   "PostInstallScripts": [
     "E:\\EZOSD\\scripts\\JoinDomain.ps1",
     "E:\\EZOSD\\scripts\\InstallCorporateApps.ps1"
-  ],
+  ]
 }
 ```
 

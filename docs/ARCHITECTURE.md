@@ -65,15 +65,14 @@ EZOSD (Enterprise Zero-Touch Operating System Deployment) is a modular PowerShel
 **Responsibility**: Core initialization, configuration management, and environment validation.
 
 **Key Functions**:
-- `Initialize-EZOSD`: Initialize logging, load configuration
-- `Get-EZOSDConfiguration`: Load and validate deployment.json
+- `Initialize-EZOSD`: Initialize logging, validate environment
 - `Test-WinPEEnvironment`: Validate WinPE prerequisites
 - `Test-NetworkConnectivity`: Check network availability
 - `Get-DeploymentStatistics`: Track deployment metrics
 
 **Data Flow**:
 ```
-deployment.json → Get-EZOSDConfiguration → Validation → Global Config Object
+Remote deployment.json → Invoke-RestMethod → Validation → $config Object
 ```
 
 ### 3. EZOSD-Logger Module
@@ -88,7 +87,7 @@ deployment.json → Get-EZOSDConfiguration → Validation → Global Config Obje
 
 **Log Locations**:
 - WinPE: `X:\Windows\Logs\EZOSD\`
-- Deployed System: `C:\Windows\Logs\EZOSD\`
+- Deployed System: `C:\EZOSD\EZOSD-Deployment.log`
 
 ### 4. EZOSD-Download Module
 
@@ -98,13 +97,11 @@ deployment.json → Get-EZOSDConfiguration → Validation → Global Config Obje
 - `Get-WindowsESD`: Download Windows ESD from configured sources
 - `Invoke-EZOSDDownload`: HTTP download with progress tracking
 - `Test-ESDFile`: Validate ESD integrity using DISM
-- `Get-ESDImageInfo`: Extract image metadata
 
 **Download Methods**:
 1. **Local Path**: Use pre-downloaded ESD from configuration
 2. **Direct URL**: Download from configured URL
-3. **BITS Transfer**: Resumable downloads when available
-4. **WebClient Fallback**: Standard HTTP download
+3. **WebClient**: Standard HTTP download
 
 ### 5. EZOSD-Disk Module
 
@@ -136,7 +133,6 @@ deployment.json → Get-EZOSDConfiguration → Validation → Global Config Obje
 - `Install-WindowsImage`: Apply ESD/WIM using DISM
 - `Set-WindowsBootConfiguration`: Configure boot loader (UEFI/BIOS)
 - `Select-WindowsEdition`: Choose Windows edition from multi-edition ESD
-- `Optimize-WindowsImage`: DISM cleanup and optimization
 
 **Image Deployment Process**:
 ```
@@ -168,7 +164,7 @@ ESD File → Select Edition → Expand-WindowsImage → Target Partition
 
 **Key Functions**:
 - `New-SetupCompleteScript`: Create SetupComplete.cmd
-- `Copy-PostInstallScripts`: Deploy custom scripts
+- `Add-PostInstallScriptFromGitHub`: Add remote script for post-install execution
 - `Set-PostInstallConfiguration`: Orchestrate post-install setup
 
 **Post-Install Execution Flow**:
@@ -193,18 +189,15 @@ Windows First Boot → OOBE → Autopilot Enrollment → Azure AD/Intune Provisi
   "ESDPath": "",
   "ESDDownloadURL": "",
   "DriverSources": [],
-  "PostInstallScripts": [],
-  "Customization": {},
-  "Network": {},
-  "Advanced": {}
+  "PostInstallScript": ""
 }
 ```
 
 **Configuration Loading**:
-1. Parse JSON file
+1. Fetch remote JSON from GitHub
 2. Validate required fields
 3. Apply defaults for optional fields
-4. Make available globally via `Get-CurrentConfiguration`
+4. Store in `$config` variable for workflow use
 
 ## Boot Media Creation
 
@@ -329,7 +322,6 @@ User Reboots
 
 ### Network Operations
 
-- **BITS Transfer**: Resumable, background downloads
 - **Cached ESDs**: Avoid repeated downloads
 
 ## Extensibility Points
@@ -375,12 +367,12 @@ Future support for:
 ### File Organization
 
 - **Modules**: `src/*.psm1`
-- **Configuration**: `config/*.json`, `config/*.xml`
-- **Scripts**: `scripts/*.ps1`
+- **Configuration**: `config/*.json`
+- **Post-Install Scripts**: `postInstallScripts/*.ps1`
 - **Documentation**: `docs/*.md`
 - **Build**: `build/*.ps1`
 
 ---
 
-**Version**: 0.1.0-alpha  
-**Last Updated**: February 2026
+**Version**: 0.2.0
+**Last Updated**: March 2026

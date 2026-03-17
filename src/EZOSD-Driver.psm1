@@ -39,7 +39,7 @@ function Get-DriverPackage {
         
         # Download using Invoke-WebRequest
         $ProgressPreference = 'SilentlyContinue'
-        Invoke-WebRequest -Uri $Url -OutFile $destinationFile
+        Invoke-WebRequest -Uri $Url -OutFile $destinationFile -UseBasicParsing -ErrorAction Stop
         
         Write-EZOSDLog -Message "Driver package downloaded: $destinationFile" -Level Info
         return $destinationFile
@@ -203,8 +203,8 @@ function Get-SystemHardwareInfo {
         }
         
         $hardwareInfo = @{
-            Manufacturer = (Get-WmiObject -Class Win32_ComputerSystem).Manufacturer
-            Model = (Get-WmiObject -Class Win32_ComputerSystem).Model
+            Manufacturer = (Get-CimInstance -ClassName Win32_ComputerSystem).Manufacturer
+            Model = (Get-CimInstance -ClassName Win32_ComputerSystem).Model
             SystemID = (Get-CimInstance -ClassName CIM_ComputerSystem).SystemSKUNumber
             Architecture = $arch
             NetworkAdapters = @()
@@ -213,7 +213,7 @@ function Get-SystemHardwareInfo {
         }
         
         # Network adapters
-        $netAdapters = Get-WmiObject -Class Win32_NetworkAdapter | Where-Object { $_.PNPDeviceID }
+        $netAdapters = Get-CimInstance -ClassName Win32_NetworkAdapter | Where-Object { $_.PNPDeviceID }
         foreach ($adapter in $netAdapters) {
             $hardwareInfo.NetworkAdapters += @{
                 Name = $adapter.Name
@@ -222,7 +222,7 @@ function Get-SystemHardwareInfo {
         }
         
         # Storage controllers
-        $storageControllers = Get-WmiObject -Class Win32_SCSIController
+        $storageControllers = Get-CimInstance -ClassName Win32_SCSIController
         foreach ($controller in $storageControllers) {
             $hardwareInfo.StorageControllers += @{
                 Name = $controller.Name
@@ -231,7 +231,7 @@ function Get-SystemHardwareInfo {
         }
         
         # Video controllers
-        $videoControllers = Get-WmiObject -Class Win32_VideoController
+        $videoControllers = Get-CimInstance -ClassName Win32_VideoController
         foreach ($controller in $videoControllers) {
             $hardwareInfo.VideoControllers += @{
                 Name = $controller.Name
@@ -381,9 +381,9 @@ function Get-DellDriverPackDownloadLink {
     try {
         # Download the latest Dell DriverPackCatalog.cab file to the current directory
         Write-EZOSDLog "Downloading Dell DriverPackCatalog.cab..."
-        $source = "http://downloads.dell.com/catalog/DriverPackCatalog.cab"
+        $source = "https://downloads.dell.com/catalog/DriverPackCatalog.cab"
 
-        Invoke-WebRequest -Uri $source -OutFile $catalogCABFile
+        Invoke-WebRequest -Uri $source -OutFile $catalogCABFile -UseBasicParsing -ErrorAction Stop
         Write-EZOSDLog "DriverPackCatalog.cab downloaded successfully."
 
         # Extract the contents of the downloaded .cab file to XML
@@ -410,7 +410,7 @@ function Get-DellDriverPackDownloadLink {
             throw "No driver pack found for Windows 11 for System ID: $SystemID"
         }
 
-        $cabDownloadLink = "http://" + $catalogXMLDoc.DriverPackManifest.baseLocation + "/" + $driverPackForWin11.path
+        $cabDownloadLink = "https://" + $catalogXMLDoc.DriverPackManifest.baseLocation + "/" + $driverPackForWin11.path
 
         return $cabDownloadLink
     }

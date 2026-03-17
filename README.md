@@ -64,13 +64,19 @@ EZOSD/
 │   ├── EZOSD-Image.psm1   # Windows image deployment
 │   ├── EZOSD-Driver.psm1  # Driver management
 │   ├── EZOSD-PostInstall.psm1 # Post-installation automation
+│   ├── EZOSD-Updates.psm1 # Windows Update management (post-install)
 │   └── EZOSD-Logger.psm1  # Logging infrastructure
 ├── config/                # Configuration files
-│   └── deployment.json    # Main deployment configuration
-├── build/                 # Build scripts
-│   └── Create-BootableUSB.ps1 # USB creation script
-├── scripts/               # Helper scripts
-├── drivers/               # Driver package storage
+│   ├── deployment.json    # Main deployment configuration
+│   └── deployment_7455.json # Dell Latitude 7455 configuration
+├── build/                 # Build and boot scripts
+│   ├── Build-Standalone.ps1 # Standalone script builder
+│   ├── Create-BootableUSB.ps1 # USB creation script
+│   ├── SetBootConfig.cmd  # Boot configuration helper
+│   ├── SetupComplete.ps1  # Post-install update script
+│   └── startnet_template.cmd # WinPE startup template
+├── postInstallScripts/    # Post-installation scripts
+│   └── CustomSetupComplete.ps1
 ├── docs/                  # Documentation
 └── Deploy-Windows.ps1     # Main deployment entry point
 ```
@@ -121,7 +127,7 @@ Cloud-based deployment over HTTPS for modern UEFI systems.
 
 Deployment logs are stored in:
 - **WinPE**: `X:\Windows\Logs\EZOSD\`
-- **Deployed System**: `C:\Windows\Logs\EZOSD\`
+- **Deployed System**: `C:\EZOSD\EZOSD-Deployment.log`
 
 Log files include timestamps, severity levels, and detailed operation information.
 

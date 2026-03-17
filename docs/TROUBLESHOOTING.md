@@ -224,11 +224,7 @@ Get-NetAdapter
    - ESD files are 3-5 GB
    - WinPE RAM disk must be large enough
 
-3. **Use BITS Transfer**
-   - BITS is more reliable for large downloads
-   - Should be automatic if available
-
-4. **Pre-Download ESD**
+3. **Pre-Download ESD**
    ```powershell
    # From full Windows
    Invoke-WebRequest -Uri "URL" -OutFile "E:\Windows11.esd"

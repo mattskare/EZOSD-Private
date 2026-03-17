@@ -65,8 +65,7 @@ C:\EZOSD\
 ├── src\                    # PowerShell modules
 ├── config\                 # Configuration files
 ├── build\                  # Build scripts
-├── scripts\                # Helper scripts
-├── drivers\                # Driver storage (empty initially)
+├── postInstallScripts\     # Post-installation scripts
 ├── docs\                   # Documentation
 ├── Deploy-Windows.ps1      # Main deployment script
 ├── README.md
@@ -95,14 +94,6 @@ cd C:\EZOSD
 
 ### Advanced USB Creation Options
 
-#### Auto-Start Deployment
-
-Creates USB that automatically starts deployment on boot:
-
-```powershell
-.\build\Create-BootableUSB.ps1 -USBDrive E: -AutoStart
-```
-
 #### Include Optional Packages
 
 Adds additional WinPE packages:
@@ -117,15 +108,6 @@ Enable detailed logging during build:
 
 ```powershell
 .\build\Create-BootableUSB.ps1 -USBDrive E: -Verbose
-```
-
-#### Custom Architecture
-
-For 32-bit systems (x86) or ARM64:
-
-```powershell
-.\build\Create-BootableUSB.ps1 -USBDrive E: -WinPEArch x86
-.\build\Create-BootableUSB.ps1 -USBDrive E: -WinPEArch arm64
 ```
 
 ## Configuring Deployment
@@ -226,8 +208,7 @@ E:\EZOSD\config\deployment.json
 
 #### 3. Start Deployment
 
-**Automatic Mode** (if `-AutoStart` was used):
-- Deployment starts automatically after 3 seconds
+Deployment starts automatically after WinPE boots.
 
 **Manual Mode**:
 ```powershell
@@ -377,11 +358,10 @@ Requires network connectivity in WinPE (inject network drivers).
 
 Complete hands-off deployment:
 
-1. Enable `-AutoStart` when creating USB
-2. Configure all options in deployment.json
-3. Set `TargetDisk` to specific disk number
-4. Boot device from USB
-5. Deployment proceeds automatically
+1. Configure all options in deployment.json
+2. Set `TargetDisk` to specific disk number
+3. Boot device from USB
+4. Deployment proceeds automatically
 
 ## Logs and Diagnostics
 

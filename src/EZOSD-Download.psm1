@@ -26,7 +26,7 @@ function Get-WindowsESD {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [ValidateSet("10", "11")]
+        [ValidateSet("11")]
         [string]$Version,
         
         [Parameter(Mandatory = $true)]
@@ -293,37 +293,6 @@ function Test-ESDFile {
     }
 }
 
-<#
-.SYNOPSIS
-    Gets information about images in an ESD file.
-.PARAMETER ESDPath
-    Path to ESD file.
-#>
-function Get-ESDImageInfo {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ESDPath
-    )
-    
-    try {
-        Write-EZOSDLog -Message "Getting image information from ESD..." -Level Info
-        
-        $images = Get-WindowsImage -ImagePath $ESDPath
-        
-        foreach ($image in $images) {
-            Write-EZOSDLog -Message "Index $($image.ImageIndex): $($image.ImageName)" -Level Info
-            Write-EZOSDLog -Message "  Size: $([math]::Round($image.ImageSize / 1GB, 2)) GB" -Level Debug
-        }
-        
-        return $images
-    }
-    catch {
-        Write-EZOSDError -Message "Failed to get ESD image info" -Exception $_.Exception
-        throw
-    }
-}
-
 function Get-WindowsProductsCab {
     param(
         [Parameter(Mandatory = $true)]
@@ -356,8 +325,7 @@ function Get-WindowsProductsCab {
     elseif ( $BuildVersion -eq '26200.0.0.0' ) {
         Write-EZOSDLog "Using build version token for products.cab: $BuildVersion"
 
-        # This is broken. Must search by amd64
-        # $productsArchitecture = if ($Architecture -eq 'arm64') { 'arm64' } else { 'amd64' }
+        # This is the products.cab architecture token used in the Windows Update API request
         $productsArchitecture = 'amd64'
 
         $productsParam = "PN=Windows.Products.Cab.$productsArchitecture&V=$BuildVersion"
@@ -438,14 +406,41 @@ function Get-WindowsProductsCab {
         return $OutFile
 
     }
+    else {
+        throw "Unsupported build version: $BuildVersion. Supported versions are 26100.0.0.0 (24H2) and 26200.0.0.0 (25H2)."
+    }
+}
 
+function Remove-DeploymentFiles {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TargetDrive,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$Files
+    )
+
+    Write-EZOSDLog "Cleaning up temporary deployment files..."
+    foreach ($file in $Files) {
+        try {
+            if (Test-Path $file) {
+                Remove-Item -Path $file -Force
+                Write-EZOSDLog "Removed temporary file: $file"
+            }
+            else {
+                Write-EZOSDLog "Temporary file not found, skipping: $file"
+            }
+        }
+        catch {
+            Write-EZOSDLog "Failed to remove temporary file: $file. Error: $_" -Level Warning
+        }
+    }
 }
 
 # Export module members
 Export-ModuleMember -Function @(
     'Get-WindowsESD',
     'Test-ESDFile',
-    'Get-ESDImageInfo',
     'Invoke-EZOSDDownload',
     'Get-WindowsProductsCab',
     'Get-WindowsDownloadURL'

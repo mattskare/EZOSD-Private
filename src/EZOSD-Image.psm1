@@ -76,8 +76,8 @@ function Install-WindowsImage {
     Configures boot files for the deployed Windows installation.
 .PARAMETER WindowsDrive
     Drive letter where Windows is installed.
-.PARAMETER SystemDrive
-    Drive letter for system/boot partition.
+.PARAMETER SystemPartition
+    System/boot partition object.
 .PARAMETER PartitionScheme
     Partition scheme (UEFI or BIOS).
 #>
@@ -195,8 +195,8 @@ function Select-WindowsEdition {
             }
             
             do {
-                $input = Read-Host "`nSelect edition index"
-                $selectedImage = $images | Where-Object { $_.ImageIndex -eq [int]$input }
+                $editionSelection = Read-Host "`nSelect edition index"
+                $selectedImage = $images | Where-Object { $_.ImageIndex -eq [int]$editionSelection }
             } while (-not $selectedImage)
             
             Write-EZOSDLog -Message "User selected: $($selectedImage.ImageName)" -Level Info
@@ -213,41 +213,9 @@ function Select-WindowsEdition {
     }
 }
 
-<#
-.SYNOPSIS
-    Optimizes the deployed Windows image.
-.PARAMETER TargetDrive
-    Drive letter where Windows is installed.
-#>
-function Optimize-WindowsImage {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$TargetDrive
-    )
-    
-    try {
-        $windowsPath = "${TargetDrive}:\"
-        
-        Write-EZOSDLog -Message "Optimizing Windows image..." -Level Info
-        
-        # Cleanup image
-        Write-EZOSDLog -Message "Running DISM cleanup..." -Level Debug
-        Repair-WindowsImage -Path $windowsPath -CheckHealth -ErrorAction SilentlyContinue | Out-Null
-        
-        Write-EZOSDLog -Message "Image optimization completed" -Level Info
-        return $true
-    }
-    catch {
-        Write-EZOSDLog -Message "Image optimization failed (non-critical): $_" -Level Warning
-        return $false
-    }
-}
-
 # Export module members
 Export-ModuleMember -Function @(
     'Install-WindowsImage',
     'Set-WindowsBootConfiguration',
-    'Select-WindowsEdition',
-    'Optimize-WindowsImage'
+    'Select-WindowsEdition'
 )
