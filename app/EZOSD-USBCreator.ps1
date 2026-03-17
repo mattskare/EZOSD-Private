@@ -6,7 +6,7 @@
     Create-BootableUSB.ps1 script with a modern dark-themed UI featuring
     real-time log output, USB drive detection, and progress tracking.
 .NOTES
-    Version: 0.2.0
+    Version: 0.2.1
     Requires: PowerShell 5.1+, .NET Framework 4.5+, Administrator privileges
 #>
 

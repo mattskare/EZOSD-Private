@@ -16,7 +16,7 @@
     .\Create-BootableUSB.ps1 -USBDrive E:
     Create bootable USB on drive E: with default settings.
 .NOTES
-    Version: 0.2.0
+    Version: 0.2.1
     Requires: Administrator privileges, Windows ADK
 #>
 

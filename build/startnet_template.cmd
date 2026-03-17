@@ -12,7 +12,7 @@ echo ============================================================
 echo.
 
 REM Set EZOSD environment variable
-set EZOSD_USBVer=0.2.0
+set EZOSD_USBVer=0.2.1
 
 REM Start the deployment script
 echo Starting automated deployment in 5 seconds...
