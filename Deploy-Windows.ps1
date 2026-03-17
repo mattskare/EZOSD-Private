@@ -18,7 +18,7 @@
     .\Deploy-Windows.ps1
     Run with default settings and configuration.
 .NOTES
-    Version: 0.2.1
+    Version: 0.2.2
     Requires: WinPE environment, PowerShell 5.1+, DISM module
 #>
 
