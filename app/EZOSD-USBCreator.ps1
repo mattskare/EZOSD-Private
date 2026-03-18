@@ -25,11 +25,23 @@ $script:Version = try { (Get-Content -Path (Join-Path $script:RepoRoot "VERSION"
 $script:BuildScriptPath = Join-Path $script:RepoRoot "build\Create-BootableUSB.ps1"
 $script:RunningJob = $null
 $script:RunspacePool = $null
+$script:LogTimer = $null
 # Advanced options lock state.
 # UI-only guard to prevent accidental changes — not a security boundary.
 # Anyone with filesystem access can edit this script. Change the value below to set a custom password.
 $script:AdvancedPasswordHash = "C0D2ADE94EF162F2B88F678306396508A447E4FACD7441B6EC6E472867AD11C5"
 $script:AdvancedUnlocked = $false
+
+# Pre-create and freeze SolidColorBrush objects for each log color.
+# Frozen brushes are immutable and can be shared across threads without marshalling overhead.
+$script:Brushes = @{}
+foreach ($hex in @("#e6edf3", "#3fb950", "#d29922", "#f85149", "#58a6ff", "#8b949e")) {
+    $b = [System.Windows.Media.SolidColorBrush](
+        [System.Windows.Media.ColorConverter]::ConvertFromString($hex)
+    )
+    $b.Freeze()
+    $script:Brushes[$hex] = $b
+}
 
 # ─── XAML UI Definition ────────────────────────────────────────────────────────
 [xml]$xaml = @"
@@ -649,6 +661,16 @@ function Write-LogMessage {
         [string]$Color = "#e6edf3"
     )
 
+    $brush = if ($script:Brushes.ContainsKey($Color)) {
+        $script:Brushes[$Color]
+    } else {
+        $b = [System.Windows.Media.SolidColorBrush](
+            [System.Windows.Media.ColorConverter]::ConvertFromString($Color)
+        )
+        $b.Freeze()
+        $b
+    }
+
     $window.Dispatcher.Invoke([Action]{
         $doc = $controls['LogOutput'].Document
         $para = [System.Windows.Documents.Paragraph]::new()
@@ -656,12 +678,12 @@ function Write-LogMessage {
         $para.Margin = [System.Windows.Thickness]::new(0, 0, 0, 1)
 
         $run = [System.Windows.Documents.Run]::new($Message)
-        $run.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFrom($Color)
+        $run.Foreground = $brush
         $para.Inlines.Add($run)
         $doc.Blocks.Add($para)
 
         $controls['LogOutput'].ScrollToEnd()
-    }, [System.Windows.Threading.DispatcherPriority]::Background)
+    }, [System.Windows.Threading.DispatcherPriority]::Normal)
 }
 
 function Clear-Log {
@@ -847,6 +869,7 @@ $controls['CancelBtn'].Add_Click({
             $script:RunningJob.PowerShell.Stop()
             $script:RunningJob.PowerShell.Dispose()
         } catch {}
+        if ($script:LogTimer) { $script:LogTimer.Stop(); $script:LogTimer = $null }
         $script:RunningJob = $null
         Write-LogMessage ""
         Write-LogMessage "[!] Build cancelled by user" "#d29922"
@@ -936,7 +959,45 @@ $controls['StartBtn'].Add_Click({
         Done         = $false
         Success      = $false
         ErrorMsg     = ""
+        # Lock-free queue: runspace enqueues entries; UI drain timer dequeues them.
+        LogQueue     = [System.Collections.Concurrent.ConcurrentQueue[object]]::new()
     })
+
+    # Log drain timer — runs on the UI thread every 50 ms and flushes the
+    # LogQueue in batches so the UI stays responsive even under heavy output.
+    # MUST be created after $syncHash so GetNewClosure() captures it correctly.
+    # Capture $script:Brushes into a local so .GetNewClosure() can see it.
+    $brushes = $script:Brushes
+    $logTimer = [System.Windows.Threading.DispatcherTimer]::new()
+    $script:LogTimer = $logTimer
+    $logTimer.Interval = [TimeSpan]::FromMilliseconds(50)
+    $logTimer.Add_Tick({
+        $entry  = $null
+        $count  = 0
+        $logBox = $syncHash.Controls['LogOutput']
+        $doc    = $logBox.Document
+        while ($count -lt 200 -and $syncHash.LogQueue.TryDequeue([ref]$entry)) {
+            $para = [System.Windows.Documents.Paragraph]::new()
+            $para.LineHeight = 2
+            $para.Margin = [System.Windows.Thickness]::new(0, 0, 0, 1)
+            $run = [System.Windows.Documents.Run]::new($entry.Text)
+            $run.Foreground = if ($brushes.ContainsKey($entry.Color)) {
+                $brushes[$entry.Color]
+            } else {
+                $brushes['#e6edf3']
+            }
+            $para.Inlines.Add($run)
+            $doc.Blocks.Add($para)
+            $count++
+        }
+        if ($count -gt 0) { $logBox.ScrollToEnd() }
+        # Stop the drain timer once the runspace signals Done and the queue is empty
+        if ($syncHash.Done -and $syncHash.LogQueue.IsEmpty) {
+            $logTimer.Stop()
+            $script:LogTimer = $null
+        }
+    }.GetNewClosure())
+    $logTimer.Start()
 
     $ps.AddScript({
         param($sync)
@@ -950,86 +1011,67 @@ $controls['StartBtn'].Add_Click({
             if ($sync.ADKPath) { $params['ADKPath'] = $sync.ADKPath }
             if ($sync.IncludeOpt) { $params['IncludeOptionalPackages'] = $true }
 
-            # Redirect output by running the script and capturing streams
             Set-Location $sync.RepoRoot
 
-            $output = & $sync.ScriptPath @params *>&1
+            # Stream output line-by-line as produced (not buffered into a variable).
+            # Each item is classified and enqueued; the UI drain timer renders batches.
+            & $sync.ScriptPath @params *>&1 | ForEach-Object {
+                $line  = $_
 
-            foreach ($line in $output) {
-                $text = $line.ToString()
-                $color = "#e6edf3"
+                # Skip ProgressRecord objects — they produce garbled multi-line text when stringified
+                if ($line -is [System.Management.Automation.ProgressRecord]) { return }
+
+                $text  = $line.ToString()
+                $color = '#e6edf3'
 
                 if ($line -is [System.Management.Automation.ErrorRecord]) {
-                    $color = "#f85149"
-                    $text = "[ERROR] $text"
-                }
-                elseif ($line -is [System.Management.Automation.WarningRecord]) {
-                    $color = "#d29922"
-                    $text = "[WARN] $text"
-                }
-                elseif ($line -is [System.Management.Automation.VerboseRecord]) {
-                    $color = "#8b949e"
-                    $text = "[VERBOSE] $text"
-                }
-                elseif ($text -match '\[✓\]|successfully|SUCCESS') {
-                    $color = "#3fb950"
-                }
-                elseif ($text -match '\[!\]|Warning') {
-                    $color = "#d29922"
-                }
-                elseif ($text -match '\[✗\]|Error|FAILED') {
-                    $color = "#f85149"
-                }
-                elseif ($text -match '═|║|╔|╗|╚|╝') {
-                    $color = "#58a6ff"
+                    $color = '#f85149'
+                    $text  = "[ERROR] $text"
+                } elseif ($line -is [System.Management.Automation.WarningRecord]) {
+                    $color = '#d29922'
+                    $text  = "[WARN] $text"
+                } elseif ($line -is [System.Management.Automation.VerboseRecord]) {
+                    $color = '#8b949e'
+                    $text  = "[VERBOSE] $text"
+                } elseif ($text -match '\[✓\]|successfully|SUCCESS') {
+                    $color = '#3fb950'
+                } elseif ($text -match '\[!\]|Warning') {
+                    $color = '#d29922'
+                } elseif ($text -match '\[✗\]|Error|FAILED') {
+                    $color = '#f85149'
+                } elseif ($text -match '═|║|╔|╗|╚|╝') {
+                    $color = '#58a6ff'
                 }
 
-                $sync.Window.Dispatcher.Invoke([Action]{
-                    $doc = $sync.Controls['LogOutput'].Document
-                    $para = [System.Windows.Documents.Paragraph]::new()
-                    $para.LineHeight = 2
-                    $para.Margin = [System.Windows.Thickness]::new(0, 0, 0, 1)
-                    $run = [System.Windows.Documents.Run]::new($text)
-                    $run.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFrom($color)
-                    $para.Inlines.Add($run)
-                    $doc.Blocks.Add($para)
-                    $sync.Controls['LogOutput'].ScrollToEnd()
-                }, [System.Windows.Threading.DispatcherPriority]::Background)
+                $sync.LogQueue.Enqueue([PSCustomObject]@{ Text = $text; Color = $color })
             }
 
             $sync.Success = $true
         }
         catch {
             $sync.ErrorMsg = $_.Exception.Message
-            $sync.Success = $false
-
-            $sync.Window.Dispatcher.Invoke([Action]{
-                $doc = $sync.Controls['LogOutput'].Document
-                $para = [System.Windows.Documents.Paragraph]::new()
-                $para.LineHeight = 2
-                $run = [System.Windows.Documents.Run]::new("[ERROR] $($sync.ErrorMsg)")
-                $run.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFrom("#f85149")
-                $para.Inlines.Add($run)
-                $doc.Blocks.Add($para)
-                $sync.Controls['LogOutput'].ScrollToEnd()
-            }, [System.Windows.Threading.DispatcherPriority]::Background)
+            $sync.Success  = $false
+            $sync.LogQueue.Enqueue([PSCustomObject]@{
+                Text  = "[ERROR] $($sync.ErrorMsg)"
+                Color = '#f85149'
+            })
         }
         finally {
+            # Signal the drain timer that the runspace is finished
             $sync.Done = $true
 
+            # Update final UI state — runs once so BrushConverter cost is negligible
             $sync.Window.Dispatcher.Invoke([Action]{
                 if ($sync.Success) {
-                    $sync.Controls['StatusDot'].Fill = [System.Windows.Media.BrushConverter]::new().ConvertFrom("#3fb950")
-                    $sync.Controls['StatusText'].Text = "Completed successfully"
-                    $sync.Controls['StatusText'].Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFrom("#3fb950")
+                    $sync.Controls['StatusDot'].Fill      = [System.Windows.Media.BrushConverter]::new().ConvertFrom('#3fb950')
+                    $sync.Controls['StatusText'].Text      = 'Completed successfully'
+                    $sync.Controls['StatusText'].Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFrom('#3fb950')
+                } else {
+                    $sync.Controls['StatusDot'].Fill      = [System.Windows.Media.BrushConverter]::new().ConvertFrom('#f85149')
+                    $sync.Controls['StatusText'].Text      = 'Build failed'
+                    $sync.Controls['StatusText'].Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFrom('#f85149')
                 }
-                else {
-                    $sync.Controls['StatusDot'].Fill = [System.Windows.Media.BrushConverter]::new().ConvertFrom("#f85149")
-                    $sync.Controls['StatusText'].Text = "Build failed"
-                    $sync.Controls['StatusText'].Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFrom("#f85149")
-                }
-
-                $sync.Controls['StartBtn'].IsEnabled = $true
+                $sync.Controls['StartBtn'].IsEnabled  = $true
                 $sync.Controls['StartBtn'].Visibility = 'Visible'
                 $sync.Controls['CancelBtn'].Visibility = 'Collapsed'
             }, [System.Windows.Threading.DispatcherPriority]::Background)
@@ -1069,7 +1111,8 @@ $window.Add_Loaded({
 })
 
 $window.Add_Closing({
-    if ($script:Timer) { $script:Timer.Stop() }
+    if ($script:Timer)    { $script:Timer.Stop() }
+    if ($script:LogTimer) { $script:LogTimer.Stop(); $script:LogTimer = $null }
     if ($script:RunningJob) {
         try {
             $script:RunningJob.PowerShell.Stop()
