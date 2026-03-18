@@ -84,6 +84,12 @@ function Start-Deployment {
         if (-not $initResult) {
             Write-EZOSDLog -Message "EZOSD initialization failed" -Level Warning
         }
+
+        # Wait for network connectivity
+        while (-not (Test-NetConnection -InformationLevel Quiet)) {
+            Write-Host "Waiting for network connectivity..." -ForegroundColor Yellow
+            Start-Sleep -Seconds 5
+        }
         
         # Get configuration from cloud
         $config = Invoke-RestMethod -Uri "https://github.com/mattskare/EZOSD/releases/latest/download/deployment.json"
