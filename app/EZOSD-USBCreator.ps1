@@ -325,6 +325,7 @@ foreach ($hex in @("#e6edf3", "#3fb950", "#d29922", "#f85149", "#58a6ff", "#8b94
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -487,8 +488,16 @@ foreach ($hex in @("#e6edf3", "#3fb950", "#d29922", "#f85149", "#58a6ff", "#8b94
             </Button>
         </Grid>
 
+        <!-- ─── Progress Bar ─── -->
+        <ProgressBar x:Name="BuildProgress" Grid.Row="3"
+                     Height="4" Margin="0,0,0,12"
+                     Background="#21262d" Foreground="#58a6ff"
+                     BorderBrush="Transparent" BorderThickness="0"
+                     Minimum="0" Maximum="100" Value="0"
+                     Visibility="Collapsed"/>
+
         <!-- ─── Log Output Card ─── -->
-        <Border Grid.Row="3" Style="{StaticResource Card}" Padding="0">
+        <Border Grid.Row="4" Style="{StaticResource Card}" Padding="0">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -531,7 +540,7 @@ foreach ($hex in @("#e6edf3", "#3fb950", "#d29922", "#f85149", "#58a6ff", "#8b94
         </Border>
 
         <!-- ─── Footer ─── -->
-        <Border Grid.Row="4" Margin="0,12,0,0">
+        <Border Grid.Row="5" Margin="0,12,0,0">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -558,7 +567,7 @@ $controlNames = @(
     'VersionText', 'USBDriveCombo', 'RefreshDrivesBtn', 'ADKPathText',
     'BrowseADKBtn', 'WorkDirText', 'BrowseWorkDirBtn', 'OptionalPkgCheck',
     'StatusDot', 'StatusText', 'CancelBtn', 'StartBtn',
-    'LogOutput', 'ClearLogBtn', 'ProgressText',
+    'LogOutput', 'ClearLogBtn', 'ProgressText', 'BuildProgress',
     'AdvExpandBtn', 'AdvChevron', 'AdvLockIcon', 'AdvLockBtn', 'AdvLockBtnText', 'AdvancedPanel'
 )
 foreach ($name in $controlNames) {
@@ -627,6 +636,9 @@ function Set-UIState {
             $controls['StartBtn'].Visibility = 'Visible'
             $controls['CancelBtn'].Visibility = 'Collapsed'
             $controls['ProgressText'].Text = ""
+            $controls['BuildProgress'].IsIndeterminate = $false
+            $controls['BuildProgress'].Value = 0
+            $controls['BuildProgress'].Visibility = 'Collapsed'
         }
         'Running' {
             $controls['StatusDot'].Fill = [System.Windows.Media.BrushConverter]::new().ConvertFrom("#58a6ff")
@@ -635,6 +647,9 @@ function Set-UIState {
             $controls['StartBtn'].IsEnabled = $false
             $controls['StartBtn'].Visibility = 'Collapsed'
             $controls['CancelBtn'].Visibility = 'Visible'
+            $controls['BuildProgress'].Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFrom("#58a6ff")
+            $controls['BuildProgress'].IsIndeterminate = $true
+            $controls['BuildProgress'].Visibility = 'Visible'
         }
         'Success' {
             $controls['StatusDot'].Fill = [System.Windows.Media.BrushConverter]::new().ConvertFrom("#3fb950")
@@ -643,6 +658,9 @@ function Set-UIState {
             $controls['StartBtn'].IsEnabled = $true
             $controls['StartBtn'].Visibility = 'Visible'
             $controls['CancelBtn'].Visibility = 'Collapsed'
+            $controls['BuildProgress'].IsIndeterminate = $false
+            $controls['BuildProgress'].Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFrom("#3fb950")
+            $controls['BuildProgress'].Value = 100
         }
         'Error' {
             $controls['StatusDot'].Fill = [System.Windows.Media.BrushConverter]::new().ConvertFrom("#f85149")
@@ -651,6 +669,9 @@ function Set-UIState {
             $controls['StartBtn'].IsEnabled = $true
             $controls['StartBtn'].Visibility = 'Visible'
             $controls['CancelBtn'].Visibility = 'Collapsed'
+            $controls['BuildProgress'].IsIndeterminate = $false
+            $controls['BuildProgress'].Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFrom("#f85149")
+            $controls['BuildProgress'].Value = 100
         }
     }
 }
@@ -870,6 +891,7 @@ $controls['CancelBtn'].Add_Click({
             $script:RunningJob.PowerShell.Dispose()
         } catch {}
         if ($script:LogTimer) { $script:LogTimer.Stop(); $script:LogTimer = $null }
+        if ($script:Timer) { $script:Timer.Stop() }
         $script:RunningJob = $null
         Write-LogMessage ""
         Write-LogMessage "[!] Build cancelled by user" "#d29922"
@@ -961,6 +983,7 @@ $controls['StartBtn'].Add_Click({
         ErrorMsg     = ""
         # Lock-free queue: runspace enqueues entries; UI drain timer dequeues them.
         LogQueue     = [System.Collections.Concurrent.ConcurrentQueue[object]]::new()
+        Timer        = $script:Timer
     })
 
     # Log drain timer — runs on the UI thread every 50 ms and flushes the
@@ -1062,15 +1085,20 @@ $controls['StartBtn'].Add_Click({
 
             # Update final UI state — runs once so BrushConverter cost is negligible
             $sync.Window.Dispatcher.Invoke([Action]{
+                if ($sync.Timer) { $sync.Timer.Stop() }
+                $sync.Controls['BuildProgress'].IsIndeterminate = $false
                 if ($sync.Success) {
                     $sync.Controls['StatusDot'].Fill      = [System.Windows.Media.BrushConverter]::new().ConvertFrom('#3fb950')
                     $sync.Controls['StatusText'].Text      = 'Completed successfully'
                     $sync.Controls['StatusText'].Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFrom('#3fb950')
+                    $sync.Controls['BuildProgress'].Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFrom('#3fb950')
                 } else {
                     $sync.Controls['StatusDot'].Fill      = [System.Windows.Media.BrushConverter]::new().ConvertFrom('#f85149')
                     $sync.Controls['StatusText'].Text      = 'Build failed'
                     $sync.Controls['StatusText'].Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFrom('#f85149')
+                    $sync.Controls['BuildProgress'].Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFrom('#f85149')
                 }
+                $sync.Controls['BuildProgress'].Value = 100
                 $sync.Controls['StartBtn'].IsEnabled  = $true
                 $sync.Controls['StartBtn'].Visibility = 'Visible'
                 $sync.Controls['CancelBtn'].Visibility = 'Collapsed'
