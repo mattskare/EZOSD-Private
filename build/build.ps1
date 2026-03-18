@@ -9,10 +9,10 @@
 .PARAMETER IncludeDebugInfo
     Include build metadata and source file markers in the output.
 .EXAMPLE
-    .\Build-Standalone.ps1
+    .\build.ps1
     Build with default settings.
 .EXAMPLE
-    .\Build-Standalone.ps1 -OutputPath "C:\Output\Deploy-Windows-Standalone.ps1" -IncludeDebugInfo
+    .\build.ps1 -OutputPath "C:\Output\EZOSD.ps1" -IncludeDebugInfo
     Build with custom output path and debug markers.
 #>
 
@@ -181,9 +181,6 @@ $combinedScript += @"
 "@
 
 Write-Host "`n[3/5] Processing main deployment script..." -ForegroundColor Yellow
-
-# Read the main deployment script
-$deployContent = Get-Content $deployScript -Raw
 
 # Find where the actual script logic starts (after the Import-Module statements)
 # We'll split on the line that marks the end of imports
