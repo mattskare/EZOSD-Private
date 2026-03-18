@@ -17,6 +17,7 @@
     Create bootable USB on drive E: with default settings.
 .NOTES
     Requires: Administrator privileges, Windows ADK
+    TEST
 #>
 
 #Requires -RunAsAdministrator
