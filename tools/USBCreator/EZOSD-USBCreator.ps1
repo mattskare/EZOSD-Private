@@ -44,7 +44,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 # Read version from file
-$version = (Get-Content -Path (Join-Path "$PSScriptRoot" "VERSION") -Raw).Trim()
+$version = (Get-Content -Path (Join-Path "$PSScriptRoot" "USBCREATORVERSION") -Raw).Trim()
 
 # Script variables
 $script:WorkingDirectory = Join-Path $Directory "EZOSD_USB_Build"

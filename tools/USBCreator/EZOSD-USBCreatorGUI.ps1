@@ -19,7 +19,7 @@ Add-Type -AssemblyName System.Windows.Forms
 
 # ─── Script Variables ──────────────────────────────────────────────────────────
 $script:AppRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$script:Version = try { (Get-Content -Path (Join-Path $script:AppRoot "VERSION") -Raw).Trim() } catch { "0.0.0" }
+$script:Version = try { (Get-Content -Path (Join-Path $script:AppRoot "USBCREATORVERSION") -Raw).Trim() } catch { "0.0.0" }
 $script:BuildScriptPath = Join-Path $script:AppRoot "EZOSD-USBCreator.ps1"
 $script:RunningJob = $null
 $script:RunspacePool = $null
