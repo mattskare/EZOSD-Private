@@ -4,8 +4,8 @@ REM Get the GUID of the default boot entry and copy it to create a new entry for
 bcdedit /store %USBDRIVE%\EFI\Microsoft\Boot\BCD /enum | find "osdevice" > GUID.txt
 For /F "tokens=2 delims={}" %%i in (GUID.txt) do (set _NEWGUID=%%i)
 
-bcdedit /store %USBDRIVE%\EFI\Microsoft\Boot\BCD /set {default} description "Windows Setup (x64)"
-bcdedit /store %USBDRIVE%\EFI\Microsoft\Boot\BCD /copy {default} /d "Windows Setup (arm64)" > GUID2.txt
+bcdedit /store %USBDRIVE%\EFI\Microsoft\Boot\BCD /set {default} description "Windows Setup (x64) - Default"
+bcdedit /store %USBDRIVE%\EFI\Microsoft\Boot\BCD /copy {default} /d "Windows Setup (arm64) - ARM devices only" > GUID2.txt
 For /F "tokens=2 delims={}" %%i in (GUID2.txt) do (set _NEWGUID2=%%i)
 
 REM Set the new entry to boot from the ARM64 boot.wim
