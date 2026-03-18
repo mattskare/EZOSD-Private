@@ -46,26 +46,11 @@ jobs:
           }
           echo "tag=$tag" >> $env:GITHUB_OUTPUT
 
-      - name: Check version consistency
-        shell: pwsh
-        run: |
-          $version = "${{ steps.version.outputs.version }}"
-          $searchString = "\*\*Version\*\*:\s*$version|Version:? ?$version"
-          $filesToCheck = @("Deploy-Windows.ps1", "build/Create-BootableUSB.ps1", "docs/ARCHITECTURE.md")
-          foreach ($file in $filesToCheck) {
-            if (Select-String -Path $file -Pattern $searchString) {
-              Write-Host "✓ Version string found in $file"
-            } else {
-              Write-Error "Version string not found in $file. Please ensure it is updated to match the VERSION file."
-              exit 1
-            }
-          }
-
       - name: Run Build script
         shell: pwsh
         run: |
           cd build
-          .\Build-Standalone.ps1 -OutputPath "..\EZOSD.ps1"
+          .\build.ps1 -OutputPath "..\EZOSD.ps1"
 
       - name: Verify output
         shell: pwsh

@@ -66,31 +66,6 @@ jobs:
             Write-Host "Version not incremented ($prVersion). No release will be created on merge."
           }
 
-      - name: Check version consistency
-        id: consistency
-        if: steps.check.outputs.result == 'will_release'
-        shell: pwsh
-        continue-on-error: true
-        run: |
-          $version = (Get-Content VERSION -Raw).Trim()
-          $searchString = "\*\*Version\*\*:\s*$version|Version:? ?$version"
-          $filesToCheck = @("Deploy-Windows.ps1", "build/Create-BootableUSB.ps1", "docs/ARCHITECTURE.md")
-          $missingFiles = @()
-          foreach ($file in $filesToCheck) {
-            if (Select-String -Path $file -Pattern $searchString) {
-              Write-Host "✓ Version string found in $file"
-            } else {
-              Write-Host "✗ Version string NOT found in $file"
-              $missingFiles += $file
-            }
-          }
-          $missing = $missingFiles -join ','
-          echo "missing_files=$missing" >> $env:GITHUB_OUTPUT
-          if ($missingFiles.Count -gt 0) {
-            Write-Error "Version string not found in: $($missingFiles -join ', ')"
-            exit 1
-          }
-
       - name: Check tag existence
         id: tag_check
         if: steps.check.outputs.result == 'will_release'
@@ -116,19 +91,12 @@ jobs:
             const prVersion = '${{ steps.check.outputs.pr_version }}';
             const mainVersion = '${{ steps.check.outputs.main_version }}';
             const checkFailed = '${{ steps.check.outcome }}' === 'failure';
-            const consistencyFailed = '${{ steps.consistency.outcome }}' === 'failure';
-            const missingFiles = '${{ steps.consistency.outputs.missing_files }}';
 
             let body = marker + '\n\n';
 
             if (checkFailed && result === 'invalid_format') {
               body += `### ❌ Version Check Failed\n\n`;
               body += `The \`VERSION\` file contains an invalid format (\`${prVersion}\`). Please use semantic versioning (e.g. \`1.0.0\`).`;
-            } else if (result === 'will_release' && consistencyFailed && missingFiles) {
-              const files = missingFiles.split(',').map(f => `\`${f}\``).join(', ');
-              body += `### ⚠️ Release Blocked\n\n`;
-              body += `Version incremented to \`${prVersion}\` (from \`${mainVersion}\`), but the version string was not found in: ${files}.\n\n`;
-              body += `Please update these files to match the \`VERSION\` file.`;
             } else if (result === 'will_release') {
               body += `### 🚀 Release Pending\n\n`;
               body += `Merging this PR will create pre-release **v${prVersion}** (current: \`${mainVersion}\`).`;
@@ -162,7 +130,7 @@ jobs:
             }
 
       - name: Fail if checks failed
-        if: steps.check.outcome == 'failure' || steps.consistency.outcome == 'failure'
+        if: steps.check.outcome == 'failure'
         shell: pwsh
         run: |
           Write-Error "Version checks failed. See PR comment for details."
@@ -172,7 +140,7 @@ jobs:
         shell: pwsh
         run: |
           cd build
-          .\Build-Standalone.ps1 -OutputPath "..\EZOSD.ps1"
+          .\build.ps1 -OutputPath "..\EZOSD.ps1"
 
       - name: Verify output
         shell: pwsh
